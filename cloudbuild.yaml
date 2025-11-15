@@ -43,24 +43,27 @@ steps:
   # Step 5: Create Cloud Deploy release
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'create-release'
-    entrypoint: 'gcloud'
+    entrypoint: 'bash'
     args:
-      - 'deploy'
-      - 'releases'
-      - 'create'
-      - '${_SERVICE_NAME}-release-${SHORT_SHA}'
-      - '--delivery-pipeline=${_SERVICE_NAME}-pipeline'
-      - '--region=${_REGION}'
-      - '--images=${_SERVICE_NAME}=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${_IMAGE_TAG}'
-      - '--skaffold-file=skaffold.yaml'
+      - '-c'
+      - |
+        RELEASE_NAME="${_SERVICE_NAME}-rel-$${SHORT_SHA:-$${BUILD_ID:0:7}}"
+        echo "Creating release: $$RELEASE_NAME"
+        gcloud deploy releases create $$RELEASE_NAME \
+          --delivery-pipeline=${_SERVICE_NAME}-pipeline \
+          --region=${_REGION} \
+          --images=${_SERVICE_NAME}=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${_IMAGE_TAG} \
+          --skaffold-file=skaffold.yaml
     waitFor: ['push-image']
 
 # Substitutions (default values, can be overridden)
+# Note: SHORT_SHA is only available when triggered from git repository
+# When submitting manually, BUILD_ID is used instead
 substitutions:
   _SERVICE_NAME: 'order-api'
   _REGION: 'asia-south1'
   _REPO_NAME: 'order-api-repo'
-  _IMAGE_TAG: '${SHORT_SHA}'
+  _IMAGE_TAG: '${BUILD_ID}'
 
 # Build options
 options:
