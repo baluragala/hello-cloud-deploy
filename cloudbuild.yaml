@@ -1,0 +1,68 @@
+# Cloud Build configuration for CI/CD pipeline
+# This file defines the build steps: test, build, push, and deploy
+
+steps:
+  # Step 1: Run unit tests
+  - name: 'node:18-alpine'
+    id: 'run-tests'
+    entrypoint: 'npm'
+    args: ['test']
+    env:
+      - 'NODE_ENV=test'
+
+  # Step 2: Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-image'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${_IMAGE_TAG}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:latest'
+      - '.'
+    waitFor: ['run-tests']
+
+  # Step 3: Push image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-image'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}'
+    waitFor: ['build-image']
+
+  # Step 4: Create Cloud Deploy release
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-release'
+    entrypoint: 'gcloud'
+    args:
+      - 'deploy'
+      - 'releases'
+      - 'create'
+      - '${_SERVICE_NAME}-release-${SHORT_SHA}'
+      - '--delivery-pipeline=${_SERVICE_NAME}-pipeline'
+      - '--region=${_REGION}'
+      - '--images=${_SERVICE_NAME}=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${_IMAGE_TAG}'
+      - '--skaffold-file=skaffold.yaml'
+    waitFor: ['push-image']
+
+# Substitutions (default values, can be overridden)
+substitutions:
+  _SERVICE_NAME: 'order-api'
+  _REGION: 'asia-south1'
+  _REPO_NAME: 'order-api-repo'
+  _IMAGE_TAG: '${SHORT_SHA}'
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout for the entire build
+timeout: '1200s'
+
+# Images to be pushed to Artifact Registry
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${_IMAGE_TAG}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:latest'
+

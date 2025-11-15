@@ -1,0 +1,66 @@
+# Skaffold configuration for Cloud Deploy
+# Defines Cloud Run deployment manifests for each environment
+
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: order-api
+build:
+  # Build configuration (handled by Cloud Build)
+  local:
+    push: false
+manifests:
+  # Cloud Run service manifests
+  rawYaml:
+    - k8s/cloudrun-service.yaml
+deploy:
+  cloudrun: {}
+profiles:
+  # Development environment profile
+  - name: dev
+    manifests:
+      rawYaml:
+        - k8s/cloudrun-service.yaml
+    patches:
+      - op: replace
+        path: /metadata/name
+        value: order-api-dev
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: dev
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com/ingress
+        value: all
+
+  # Staging environment profile
+  - name: staging
+    manifests:
+      rawYaml:
+        - k8s/cloudrun-service.yaml
+    patches:
+      - op: replace
+        path: /metadata/name
+        value: order-api-stg
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: staging
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com/ingress
+        value: all
+
+  # Production environment profile
+  - name: prod
+    manifests:
+      rawYaml:
+        - k8s/cloudrun-service.yaml
+    patches:
+      - op: replace
+        path: /metadata/name
+        value: order-api-prod
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: prod
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com/ingress
+        value: all
+
