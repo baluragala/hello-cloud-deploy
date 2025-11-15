@@ -47,8 +47,14 @@ steps:
     args:
       - '-c'
       - |
-        RELEASE_NAME="${_SERVICE_NAME}-rel-$${SHORT_SHA:-$${BUILD_ID:0:7}}"
-        echo "Creating release: $$RELEASE_NAME"
+        # Use SHORT_SHA if available (git trigger), otherwise use first 7 chars of BUILD_ID
+        if [ -n "$SHORT_SHA" ]; then
+          RELEASE_ID="$SHORT_SHA"
+        else
+          RELEASE_ID="${BUILD_ID:0:7}"
+        fi
+        RELEASE_NAME="${_SERVICE_NAME}-rel-$$RELEASE_ID"
+        echo "Creating release: $$RELEASE_NAME with image tag: ${_IMAGE_TAG}"
         gcloud deploy releases create $$RELEASE_NAME \
           --delivery-pipeline=${_SERVICE_NAME}-pipeline \
           --region=${_REGION} \
