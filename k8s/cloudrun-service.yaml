@@ -57,8 +57,8 @@ spec:
             timeoutSeconds: 1
             periodSeconds: 10
             failureThreshold: 3
-      # Traffic allocation (100% to latest revision)
-      traffic:
-        - percent: 100
-          latestRevision: true
+  # Traffic allocation (100% to latest revision)
+  traffic:
+    - percent: 100
+      latestRevision: true
 
