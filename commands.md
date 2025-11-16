@@ -2,6 +2,16 @@
 
 This document contains all the commands needed to set up the complete CI/CD pipeline for the Order API microservice on GCP.
 
+> **📝 Note:** These manual commands are synchronized with `setup.sh` (automated script). You can either:
+> - **Follow this guide manually** for full control and learning
+> - **Run `./setup.sh`** for automated setup (recommended for quick start)
+>
+> The automated script (`setup.sh`) combines these steps with:
+> - ✅ Automatic project ID detection
+> - ✅ Idempotency (safe to run multiple times)
+> - ✅ Interactive prompts and validation
+> - ✅ Better error handling and colored output
+
 ## Prerequisites
 
 Before starting, ensure you have:
@@ -112,31 +122,38 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --role="roles/run.invoker"
 ```
 
-## Step 7: Grant Cloud Build Permissions
+## Step 7: Grant Cloud Build and Cloud Deploy Permissions
 
 ```bash
 # Set Cloud Build service account variable
 export CLOUD_BUILD_SA="${PROJECT_ID}@cloudbuild.gserviceaccount.com"
 
+# Grant Cloud Build permissions
+echo "Granting Cloud Build permissions..."
+
 # Grant Artifact Registry writer
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
-    --role="roles/artifactregistry.writer"
+    --role="roles/artifactregistry.writer" \
+    --condition=None
 
 # Grant Cloud Run admin
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
-    --role="roles/run.admin"
+    --role="roles/run.admin" \
+    --condition=None
 
 # Grant Cloud Deploy releaser
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
-    --role="roles/clouddeploy.releaser"
+    --role="roles/clouddeploy.releaser" \
+    --condition=None
 
 # Grant Cloud Deploy job runner
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
-    --role="roles/clouddeploy.jobRunner"
+    --role="roles/clouddeploy.jobRunner" \
+    --condition=None
 
 # Grant service account user role to Cloud Build
 gcloud iam service-accounts add-iam-policy-binding \
@@ -144,16 +161,17 @@ gcloud iam service-accounts add-iam-policy-binding \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
     --role="roles/iam.serviceAccountUser" \
     --project=$PROJECT_ID
-```
 
-## Step 8: Grant Cloud Deploy Permissions
+# Grant Cloud Deploy service agent permissions
+echo "Granting Cloud Deploy service agent permissions..."
 
-```bash
 # Get project number
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 
 # Set Cloud Deploy service agent variable
 export CLOUD_DEPLOY_SA="service-${PROJECT_NUMBER}@gcp-sa-clouddeploy.iam.gserviceaccount.com"
+
+echo "Cloud Deploy service agent: $CLOUD_DEPLOY_SA"
 
 # Grant Cloud Deploy service agent permission to act as the service account
 gcloud iam service-accounts add-iam-policy-binding \
@@ -165,22 +183,23 @@ gcloud iam service-accounts add-iam-policy-binding \
 # Grant Cloud Deploy service agent Cloud Run developer role
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${CLOUD_DEPLOY_SA}" \
-    --role="roles/run.developer"
+    --role="roles/run.developer" \
+    --condition=None
 
-echo "Cloud Deploy service agent: $CLOUD_DEPLOY_SA"
+echo "✓ Cloud Build and Cloud Deploy permissions granted"
 ```
 
-## Step 9: Update Cloud Deploy Configuration
+## Step 8: Initialize Cloud Deploy Pipeline
 
 ```bash
 # Replace PROJECT_ID placeholder in clouddeploy.yaml
 sed "s/\${PROJECT_ID}/$PROJECT_ID/g" clouddeploy.yaml > clouddeploy-temp.yaml
 
-# View the updated configuration
+# View the updated configuration (optional)
 cat clouddeploy-temp.yaml
 ```
 
-## Step 10: Initialize Cloud Deploy Pipeline
+## Step 9: Create Cloud Deploy Pipeline and Targets
 
 ```bash
 # Create Cloud Deploy pipeline and targets
@@ -201,23 +220,29 @@ gcloud deploy targets list --region=$REGION --project=$PROJECT_ID
 rm -f clouddeploy-temp.yaml
 ```
 
-## Step 11: Connect GitHub Repository to Cloud Build
+## Step 10: Connect GitHub Repository to Cloud Build
 
-**This step must be done via the Console:**
+**⚠️ IMPORTANT: This step must be done via the Console before creating triggers**
 
-1. Go to: https://console.cloud.google.com/cloud-build/triggers/connect?project=$PROJECT_ID
-2. Click "Connect Repository"
-3. Select "GitHub" as the source
-4. Authenticate with GitHub
-5. Select your repository: `YOUR-USERNAME/hello-cloud-deploy`
-6. Click "Connect"
+This is a one-time setup that requires browser authentication.
+
+### Steps to connect your repository:
+
+1. Go to: https://console.cloud.google.com/cloud-build/triggers/connect
+   - Replace with your project: `https://console.cloud.google.com/cloud-build/triggers/connect?project=$PROJECT_ID`
+2. Click "**Connect Repository**"
+3. Select "**GitHub**" as the source
+4. **Authenticate with GitHub** (authorize Google Cloud Build)
+5. Select your organization/user
+6. Select your repository: `YOUR-USERNAME/hello-cloud-deploy`
+7. Check "**I understand...**" and click "**Connect**"
 
 ```bash
-# After connecting via console, verify the connection
-gcloud builds repositories list --connection=github --region=$REGION
+# After connecting via console, verify the connection (optional)
+gcloud alpha builds connections list --region=$REGION
 ```
 
-## Step 12: Create Cloud Build Trigger
+## Step 11: Create Cloud Build Trigger
 
 ```bash
 # Set GitHub repository details
@@ -225,7 +250,7 @@ export GIT_REPO_OWNER="YOUR-USERNAME"  # Replace with your GitHub username
 export GIT_REPO_NAME="hello-cloud-deploy"
 export BRANCH_NAME="main"
 
-# Create the Cloud Build trigger
+# Create the Cloud Build trigger (only after GitHub is connected)
 gcloud builds triggers create github \
     --name="${SERVICE_NAME}-trigger" \
     --repo-owner="$GIT_REPO_OWNER" \
@@ -237,9 +262,12 @@ gcloud builds triggers create github \
 
 # Verify trigger creation
 gcloud builds triggers describe ${SERVICE_NAME}-trigger --region=$REGION
+
+# List all triggers
+gcloud builds triggers list --region=$REGION
 ```
 
-## Step 13: Test the Build Pipeline
+## Step 12: Test the Build Pipeline
 
 ```bash
 # Option 1: Manual build submission
@@ -253,7 +281,7 @@ git commit -m "Trigger CI/CD pipeline"
 git push origin main
 ```
 
-## Step 14: Monitor the Build
+## Step 13: Monitor the Build
 
 ```bash
 # List recent builds
@@ -266,7 +294,7 @@ gcloud builds describe BUILD_ID
 gcloud builds log BUILD_ID --stream
 ```
 
-## Step 15: Monitor Cloud Deploy Release
+## Step 14: Monitor Cloud Deploy Release
 
 ```bash
 # List all releases
@@ -286,7 +314,7 @@ gcloud deploy rollouts list \
     --region=$REGION
 ```
 
-## Step 16: Verify Cloud Run Deployment
+## Step 15: Verify Cloud Run Deployment
 
 ```bash
 # List Cloud Run services
@@ -317,7 +345,7 @@ curl -X POST ${DEV_URL}/orders \
     }'
 ```
 
-## Step 17: Promote to Staging
+## Step 16: Promote to Staging
 
 ```bash
 # Get the latest release name
@@ -341,7 +369,7 @@ gcloud deploy rollouts list \
     --region=$REGION
 ```
 
-## Step 18: Promote to Production (with approval)
+## Step 17: Promote to Production (with approval)
 
 ```bash
 # Promote to production (requires approval)
@@ -366,7 +394,7 @@ gcloud deploy rollouts approve $ROLLOUT_NAME \
     --region=$REGION
 ```
 
-## Step 19: View Logs
+## Step 18: View Logs
 
 ```bash
 # View Cloud Run logs for dev environment
@@ -381,7 +409,7 @@ gcloud alpha run services logs tail order-api-dev --region=$REGION
 gcloud builds log $(gcloud builds list --limit=1 --format="value(id)") --stream
 ```
 
-## Step 20: Cleanup (Optional)
+## Step 19: Cleanup (Optional)
 
 ```bash
 # Use the cleanup script
