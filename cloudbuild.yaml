@@ -62,7 +62,7 @@ steps:
 # Substitutions (default values, can be overridden)
 substitutions:
   _SERVICE_NAME: 'order-api'
-  _REGION: 'asia-south1'
+  _REGION: 'us-east1'
   _REPO_NAME: 'order-api-repo'
 
 # Build options
